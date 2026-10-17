@@ -1,0 +1,4 @@
+python-telegram-bot>=21.4
+requests>=2.31.0
+python-dotenv>=1.0.0
+rich>=13.0.0

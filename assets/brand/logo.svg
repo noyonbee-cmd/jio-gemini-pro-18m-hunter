@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B1120"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="primaryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#0088CC"/>
+      <stop offset="100%" stop-color="#0369A1"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C084FC"/>
+      <stop offset="50%" stop-color="#7B2CBF"/>
+      <stop offset="100%" stop-color="#581C87"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="640" height="640" fill="url(#bgGrad)"/>
+
+  <!-- Telegram Avatar Circular Safe Zone Boundary (512px diameter) -->
+  <circle cx="320" cy="320" r="256" fill="none" stroke="#1E293B" stroke-width="2" stroke-dasharray="8 8"/>
+  <circle cx="320" cy="320" r="230" fill="#131D31" stroke="#334155" stroke-width="3"/>
+
+  <!-- Ambient Glow Behind Diamond -->
+  <circle cx="320" cy="320" r="140" fill="#7B2CBF" opacity="0.25" filter="url(#glow)"/>
+  <circle cx="320" cy="320" r="100" fill="#0088CC" opacity="0.30" filter="url(#glow)"/>
+
+  <!-- Outer Cyber Rings -->
+  <polygon points="320,130 470,320 320,510 170,320" fill="none" stroke="url(#accentGrad)" stroke-width="8" stroke-linejoin="round"/>
+  <polygon points="320,165 440,320 320,475 200,320" fill="none" stroke="url(#primaryGrad)" stroke-width="6" stroke-linejoin="round" opacity="0.8"/>
+
+  <!-- Core Diamond Crystal Facets -->
+  <!-- Top Left Facet (Jio Blue) -->
+  <polygon points="320,200 320,320 220,320" fill="url(#primaryGrad)" opacity="0.95"/>
+  <!-- Top Right Facet (Gemini Violet) -->
+  <polygon points="320,200 420,320 320,320" fill="url(#accentGrad)" opacity="0.95"/>
+  <!-- Bottom Left Facet (Gemini Deep) -->
+  <polygon points="220,320 320,320 320,440" fill="#581C87" opacity="0.9"/>
+  <!-- Bottom Right Facet (Jio Deep) -->
+  <polygon points="320,320 420,320 320,440" fill="#0369A1" opacity="0.9"/>
+
+  <!-- Central Star / Diamond Core -->
+  <polygon points="320,270 340,320 390,320 350,345 365,395 320,360 275,395 290,345 250,320 300,320" fill="#F8FAFC" filter="url(#glow)"/>
+
+  <!-- Sparkle Accents -->
+  <circle cx="320" cy="115" r="5" fill="#38BDF8"/>
+  <circle cx="525" cy="320" r="5" fill="#C084FC"/>
+  <circle cx="320" cy="525" r="5" fill="#38BDF8"/>
+  <circle cx="115" cy="320" r="5" fill="#C084FC"/>
+</svg>

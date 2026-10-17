@@ -1,0 +1,42 @@
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# Environment secrets and backups
+.env
+.env.bak
+*.bak
+*.tmp
+
+# Database and state files
+*.db
+*.sqlite
+*.sqlite3
+
+# Claimed outputs and logs
+gemini_activation_links.txt
+gemini_results.csv
+*.log
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE and OS
+.vscode/
+.idea/
+.agents/
+.claude/
+Thumbs.db
+Desktop.ini
+
+# Internal PRD, planning, and draft docs
+*prd*.md
+*PRD*.md
+IMPLEMENTATION_PLAN.md
+telegram_bot-skill.md
+docs/
+BRAND_BRIEF.md
+FONTS.md
