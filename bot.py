@@ -848,6 +848,7 @@ async def execute_single_hunt(
 
     # ------------------ STEP 4: POLL FOR 6-DIGIT OTP (60% -> 88%) ------------------
     log_step(4, 5, "Poll 6-Digit MyJio OTP on Grizzly SMS", f"ActID=#{act_id} | Mobile=+{phone} | Timeout={OTP_TIMEOUT}s")
+    main_loop = asyncio.get_running_loop()
     last_update_time = 0
 
     def on_poll_progress(elapsed: int, total: int):
@@ -869,13 +870,15 @@ async def execute_single_hunt(
                 total_timeout=total,
                 spinner_idx=spinner_idx,
             )
-            asyncio.run_coroutine_threadsafe(
-                message.edit_text(text_step4, reply_markup=stop_keyboard, parse_mode=ParseMode.MARKDOWN),
-                asyncio.get_event_loop(),
-            )
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    safe_edit_text(message, text_step4, reply_markup=stop_keyboard, parse_mode=ParseMode.MARKDOWN),
+                    main_loop,
+                )
+            except Exception:
+                pass
 
-    loop = asyncio.get_event_loop()
-    otp_ok, otp_code, poll_msg = await loop.run_in_executor(
+    otp_ok, otp_code, poll_msg = await main_loop.run_in_executor(
         None,
         lambda: grizzly_client.poll_otp(
             activation_id=act_id,
