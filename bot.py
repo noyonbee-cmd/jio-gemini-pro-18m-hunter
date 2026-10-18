@@ -191,6 +191,88 @@ async def verify_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> b
     return False
 
 
+async def safe_edit_callback(query, text: str, reply_markup=None, parse_mode=ParseMode.MARKDOWN, **kwargs):
+    """
+    Safely edit a callback query message regardless of whether it's a PHOTO (caption) or TEXT.
+    Handles Markdown parse errors, 'message not modified', and photo vs text mismatches.
+    """
+    msg = getattr(query, "message", None)
+    is_photo = bool(msg and getattr(msg, "photo", None))
+    cap_kwargs = {k: v for k, v in kwargs.items() if k not in ("disable_web_page_preview", "link_preview_options")}
+    try:
+        if is_photo:
+            return await query.edit_message_caption(caption=text, reply_markup=reply_markup, parse_mode=parse_mode, **cap_kwargs)
+        else:
+            return await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+    except Exception as e:
+        err_str = str(e).lower()
+        if "not modified" in err_str:
+            return None
+        if "no text in the message to edit" in err_str:
+            try:
+                return await query.edit_message_caption(caption=text, reply_markup=reply_markup, parse_mode=parse_mode, **cap_kwargs)
+            except Exception:
+                pass
+        if "no caption in the message to edit" in err_str:
+            try:
+                return await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+            except Exception:
+                pass
+        if "can't parse entities" in err_str or "entity" in err_str:
+            clean_text = text.replace("**", "").replace("`", "")
+            try:
+                if is_photo:
+                    return await query.edit_message_caption(caption=clean_text, reply_markup=reply_markup, parse_mode=None, **cap_kwargs)
+                else:
+                    return await query.edit_message_text(text=clean_text, reply_markup=reply_markup, parse_mode=None, **kwargs)
+            except Exception:
+                pass
+        if msg:
+            try:
+                return await msg.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+            except Exception:
+                pass
+        return None
+
+
+async def safe_edit_text(message, text: str, reply_markup=None, parse_mode=ParseMode.MARKDOWN):
+    """Safely edit message text or caption with graceful fallback if markdown or photo mismatch."""
+    is_photo = bool(message and getattr(message, "photo", None))
+    try:
+        if is_photo:
+            return await message.edit_caption(caption=text, reply_markup=reply_markup, parse_mode=parse_mode)
+        else:
+            return await message.edit_text(text=text, reply_markup=reply_markup, parse_mode=parse_mode)
+    except Exception as e:
+        err_str = str(e).lower()
+        if "not modified" in err_str:
+            return None
+        if "no text in the message to edit" in err_str:
+            try:
+                return await message.edit_caption(caption=text, reply_markup=reply_markup, parse_mode=parse_mode)
+            except Exception:
+                pass
+        if "no caption in the message to edit" in err_str:
+            try:
+                return await message.edit_text(text=text, reply_markup=reply_markup, parse_mode=parse_mode)
+            except Exception:
+                pass
+        if "can't parse entities" in err_str or "entity" in err_str:
+            clean_text = text.replace("**", "").replace("`", "")
+            try:
+                if is_photo:
+                    return await message.edit_caption(caption=clean_text, reply_markup=reply_markup, parse_mode=None)
+                else:
+                    return await message.edit_text(clean_text, reply_markup=reply_markup, parse_mode=None)
+            except Exception:
+                pass
+        try:
+            return await message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+        except Exception:
+            pass
+        return None
+
+
 # ---------------------------------------------------------
 # COMMAND HANDLERS
 # ---------------------------------------------------------
@@ -249,7 +331,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     # Fallback / Callback in-place text update
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+        await safe_edit_callback(update.callback_query, text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
     elif update.message:
         sent_msg = await update.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
         chat_cleaner.track_outgoing(chat_id, sent_msg.message_id)
@@ -284,7 +366,7 @@ async def stop_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     keyboard = build_main_keyboard(False, is_admin=is_admin)
     if update.callback_query:
         await update.callback_query.answer("Task stopped!")
-        await update.callback_query.edit_message_text(msg, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+        await safe_edit_callback(update.callback_query, msg, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
     elif update.message:
         sent_msg = await update.message.reply_text(msg, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
         chat_cleaner.track_outgoing(chat_id, sent_msg.message_id)
@@ -312,7 +394,7 @@ async def balance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+        await safe_edit_callback(update.callback_query, text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
     elif update.message:
         sent_msg = await update.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
         chat_cleaner.track_outgoing(chat_id, sent_msg.message_id)
@@ -339,7 +421,7 @@ async def active_numbers_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+        await safe_edit_callback(update.callback_query, text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
     elif update.message:
         sent_msg = await update.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
         chat_cleaner.track_outgoing(chat_id, sent_msg.message_id)
@@ -361,8 +443,8 @@ async def saved_links_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(
-            text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True
+        await safe_edit_callback(
+            update.callback_query, text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True
         )
     elif update.message:
         sent_msg = await update.message.reply_text(
@@ -387,7 +469,7 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+        await safe_edit_callback(update.callback_query, text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
     elif update.message:
         sent_msg = await update.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
         chat_cleaner.track_outgoing(chat_id, sent_msg.message_id)
@@ -404,7 +486,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: 
 
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+        await safe_edit_callback(update.callback_query, text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
     elif update.message:
         sent_msg = await update.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
         chat_cleaner.track_outgoing(chat_id, sent_msg.message_id)
@@ -431,7 +513,7 @@ async def admin_hub_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+        await safe_edit_callback(update.callback_query, text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
     elif update.message:
         sent_msg = await update.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
         chat_cleaner.track_outgoing(update.effective_chat.id, sent_msg.message_id)
@@ -454,7 +536,7 @@ async def users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, page
 
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+        await safe_edit_callback(update.callback_query, text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
     elif update.message:
         sent_msg = await update.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
         chat_cleaner.track_outgoing(update.effective_chat.id, sent_msg.message_id)
@@ -480,7 +562,7 @@ async def invite_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if update.callback_query:
         await update.callback_query.answer("Invite generated!")
-        await update.callback_query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+        await safe_edit_callback(update.callback_query, text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
     elif update.message:
         sent_msg = await update.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
         chat_cleaner.track_outgoing(update.effective_chat.id, sent_msg.message_id)
@@ -599,18 +681,6 @@ async def setup_cmd_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await status_msg.edit_text(report, parse_mode=ParseMode.MARKDOWN)
 
 
-async def safe_edit_text(message, text: str, reply_markup=None, parse_mode=ParseMode.MARKDOWN):
-    """Safely edit message text with graceful fallback if markdown entity parsing fails."""
-    try:
-        return await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
-    except Exception as e:
-        if "Can't parse entities" in str(e) or "entity" in str(e).lower():
-            clean_text = text.replace("**", "").replace("`", "")
-            try:
-                return await message.edit_text(clean_text, reply_markup=reply_markup, parse_mode=None)
-            except Exception:
-                pass
-        raise
 
 
 async def execute_single_hunt(
@@ -1287,7 +1357,8 @@ async def generic_callback_router(update: Update, context: ContextTypes.DEFAULT_
     elif data == "btn_set_api_key":
         await query.answer()
         context.user_data["awaiting_api_key"] = True
-        await query.edit_message_text(
+        await safe_edit_callback(
+            query,
             render_set_api_key_view(),
             reply_markup=build_prompt_cancel_keyboard(),
             parse_mode=ParseMode.MARKDOWN,
@@ -1295,7 +1366,8 @@ async def generic_callback_router(update: Update, context: ContextTypes.DEFAULT_
     elif data == "btn_set_price":
         await query.answer()
         context.user_data["awaiting_max_price"] = True
-        await query.edit_message_text(
+        await safe_edit_callback(
+            query,
             render_set_price_view(RUNTIME_CONFIG["max_price"]),
             reply_markup=build_prompt_cancel_keyboard(),
             parse_mode=ParseMode.MARKDOWN,
@@ -1303,7 +1375,8 @@ async def generic_callback_router(update: Update, context: ContextTypes.DEFAULT_
     elif data == "btn_set_service":
         await query.answer()
         context.user_data["awaiting_service_code"] = True
-        await query.edit_message_text(
+        await safe_edit_callback(
+            query,
             render_set_service_view(RUNTIME_CONFIG["service_code"]),
             reply_markup=build_service_selector_keyboard(RUNTIME_CONFIG["service_code"]),
             parse_mode=ParseMode.MARKDOWN,
@@ -1315,7 +1388,8 @@ async def generic_callback_router(update: Update, context: ContextTypes.DEFAULT_
         context.user_data.pop("awaiting_service_code", None)
         await query.answer(f"Activated service code: {new_svc}")
         log_bot_info(f"Updated Service Code to '{new_svc}' via quick-select")
-        await query.edit_message_text(
+        await safe_edit_callback(
+            query,
             render_set_service_view(new_svc) + f"\n\n✅ **Activated Code:** `{new_svc}`",
             reply_markup=build_service_selector_keyboard(new_svc),
             parse_mode=ParseMode.MARKDOWN,
@@ -1323,7 +1397,8 @@ async def generic_callback_router(update: Update, context: ContextTypes.DEFAULT_
     elif data == "svc_type_custom":
         await query.answer()
         context.user_data["awaiting_service_code"] = True
-        await query.edit_message_text(
+        await safe_edit_callback(
+            query,
             "⌨️ **TYPE CUSTOM SERVICE CODE**\n\n"
             "Please send the exact Grizzly service code in chat now (e.g. `air`, `vi`, `go`, `wa`, `tg`, `mjo`, etc.), "
             "or use `/set_service <code>`.",
@@ -1342,7 +1417,8 @@ async def generic_callback_router(update: Update, context: ContextTypes.DEFAULT_
     elif data == "adm_mode_menu":
         await query.answer()
         cur_mode = auth_manager.get_access_mode()
-        await query.edit_message_text(
+        await safe_edit_callback(
+            query,
             f"🛡️ **Configure Bot Access Mode**\n\n• Current Policy: `{cur_mode.upper()}`\n\nSelect a policy below:",
             reply_markup=build_mode_selector_keyboard(cur_mode),
             parse_mode=ParseMode.MARKDOWN,
@@ -1359,7 +1435,8 @@ async def generic_callback_router(update: Update, context: ContextTypes.DEFAULT_
         chat_cleaner.track_outgoing(chat_id, sent_msg.message_id)
     elif data == "adm_clear_all_prompt":
         await query.answer()
-        await query.edit_message_text(
+        await safe_edit_callback(
+            query,
             "⚠️ **CONFIRM GLOBAL CHAT WIPE**\n\n"
             "This will delete tracked messages < 48h across all user chats.\nProceed?",
             reply_markup=build_confirm_wipe_keyboard(),
@@ -1368,14 +1445,14 @@ async def generic_callback_router(update: Update, context: ContextTypes.DEFAULT_
     elif data == "adm_clear_all_confirm":
         await query.answer("Wiping chats...")
         report = await chat_cleaner.clear_all_chats(context.bot)
-        await query.edit_message_text(report, reply_markup=build_sub_keyboard(back_callback="btn_admin_hub"), parse_mode=ParseMode.MARKDOWN)
+        await safe_edit_callback(query, report, reply_markup=build_sub_keyboard(back_callback="btn_admin_hub"), parse_mode=ParseMode.MARKDOWN)
     elif data == "adm_resync_profile":
         await query.answer("Re-syncing...")
         res = await profile_manager.apply_profile(context.bot, force=True)
         report = "🎨 **PROFILE RE-SYNC COMPLETE**\n\n"
         for k, v in res.items():
             report += f"• **{k.capitalize()}**: `{v}`\n"
-        await query.edit_message_text(report, reply_markup=build_sub_keyboard(back_callback="btn_admin_hub"), parse_mode=ParseMode.MARKDOWN)
+        await safe_edit_callback(query, report, reply_markup=build_sub_keyboard(back_callback="btn_admin_hub"), parse_mode=ParseMode.MARKDOWN)
     elif data.startswith("adm_revoke_"):
         target_uid = int(data.replace("adm_revoke_", ""))
         db_manager.remove_authorized_user(target_uid)
