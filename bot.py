@@ -1132,7 +1132,8 @@ async def cancel_id_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         cooldown_seconds=75,
     )
     bar = render_progress_bar(100)
-    await query.edit_message_text(
+    await safe_edit_callback(
+        query,
         f"🛑 **Order #{act_id} Queued for Refund**\n\n"
         f"{bar}\n\n"
         "• Background Refund Watcher is monitoring the cooldown window.\n"
@@ -1324,7 +1325,7 @@ async def generic_callback_router(update: Update, context: ContextTypes.DEFAULT_
     if data == "btn_dashboard":
         await query.answer()
         text, keyboard = get_dashboard_content(chat_id, user, is_admin=is_admin)
-        await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+        await safe_edit_callback(query, text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
 
     # 2. Hero Actions
     elif data == "btn_buy":
