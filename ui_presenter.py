@@ -609,13 +609,37 @@ def render_set_service_view(current_service: str) -> str:
     return (
         "🏷️ **CONFIGURE GRIZZLY SERVICE CODE**\n"
         f"{RAIL_BORDER}\n\n"
-        f"• **Current Service Tag**: `{current_service}`\n\n"
-        "Official Recommended Codes:\n"
-        "• `jio` — Official MyJio (450,000+ numbers available, ~$0.10)\n"
-        "• `mjo` — MyJio 6-Digit OTP alternative\n"
-        "• `jii` — Jio secondary route\n\n"
-        "Please reply with the service code you want to use, or use `/set_service <code>`."
+        f"• **Active Service Tag**: `{current_service}`\n\n"
+        "Popular Service Codes on Grizzly SMS:\n"
+        "• `jio` — Official MyJio (~470,000+ numbers, ~$0.10)\n"
+        "• `mjo` — MyJio Alternative (~3,300 numbers, ~$0.15)\n"
+        "• `jii` — Jio Secondary Line (~163,000 numbers, ~$0.10)\n"
+        "• `vi`  — Vi / Vodafone Idea (~62,000 numbers, ~$0.05)\n"
+        "• `air` — Airtel India Route\n"
+        "• `go`  — Google / Gmail Route\n\n"
+        "👉 **Tap a button below** to select instantly, or reply with **ANY custom service code**."
     )
+
+
+def build_service_selector_keyboard(current_service: str = "jio") -> InlineKeyboardMarkup:
+    """Inline keyboard for rapid service selection or typing custom."""
+    def mark(code: str, label: str) -> str:
+        return f"• {label} •" if current_service.lower() == code.lower() else label
+
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(mark("jio", "⚡ jio ($0.10)"), callback_data="svc_select_jio"),
+            InlineKeyboardButton(mark("mjo", "📱 mjo ($0.15)"), callback_data="svc_select_mjo"),
+        ],
+        [
+            InlineKeyboardButton(mark("jii", "🔄 jii ($0.10)"), callback_data="svc_select_jii"),
+            InlineKeyboardButton(mark("vi", "🌐 vi ($0.05)"), callback_data="svc_select_vi"),
+        ],
+        [
+            InlineKeyboardButton("⌨️ Type Custom Code", callback_data="svc_type_custom"),
+            InlineKeyboardButton("🔙 Dashboard", callback_data="btn_dashboard"),
+        ],
+    ])
 
 
 def render_set_api_key_view() -> str:

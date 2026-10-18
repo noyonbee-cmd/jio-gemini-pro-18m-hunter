@@ -121,7 +121,8 @@ class GrizzlySMSClient:
     def normalize_service_code(service: str) -> str:
         """
         Map common user service names to official Grizzly SMS service codes.
-        On Grizzly SMS, official code for MyJio is 'jio' (450k+ numbers).
+        Allows any raw service code (e.g. 'jio', 'mjo', 'jii', 'vi', 'air', 'go', etc.)
+        without mangling.
         """
         clean = (service or "").strip().lower()
         mapping = {
@@ -129,10 +130,8 @@ class GrizzlySMSClient:
             "my_jio": "jio",
             "my-jio": "jio",
             "my jio": "jio",
-            "jio": "jio",
-            "jii": "jii",
-            "mjo": "jio",  # Joymall -> map to MyJio (jio)
-            "mj": "jio",   # Zalo -> map to MyJio (jio)
+            "reliance": "jio",
+            "reliance_jio": "jio",
         }
         return mapping.get(clean, clean)
 

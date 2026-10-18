@@ -93,6 +93,7 @@ from ui_presenter import (
     build_stop_keyboard,
     build_sub_keyboard,
     build_prompt_cancel_keyboard,
+    build_service_selector_keyboard,
     build_active_numbers_keyboard,
     build_saved_links_keyboard,
     build_success_keyboard,
@@ -612,16 +613,23 @@ async def safe_edit_text(message, text: str, reply_markup=None, parse_mode=Parse
         raise
 
 
-async def execute_single_hunt(chat_id: int, context: ContextTypes.DEFAULT_TYPE, token: CancellationToken, message) -> bool:
+async def execute_single_hunt(
+    chat_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
+    token: CancellationToken,
+    message,
+    service_code: Optional[str] = None,
+) -> bool:
     """
     Executes single acquisition, active Jio check, 6-digit OTP polling, and Gemini claim.
     Returns True if an 18-month Gemini link was claimed, False otherwise.
     Strictly preserves backend engine while upgrading all visual presentations.
     """
     stop_keyboard = build_stop_keyboard()
+    target_svc = service_code or RUNTIME_CONFIG.get("service_code", DEFAULT_SERVICE_CODE)
 
     # ------------------ STEP 1: RENT NUMBER (15%) ------------------
-    log_step(1, 5, "Rent Virtual Number via Grizzly SMS", f"Service={RUNTIME_CONFIG['service_code']} | MaxPrice=${RUNTIME_CONFIG['max_price']:.2f}")
+    log_step(1, 5, "Rent Virtual Number via Grizzly SMS", f"Service={target_svc} | MaxPrice=${RUNTIME_CONFIG['max_price']:.2f}")
     
     try:
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -632,7 +640,7 @@ async def execute_single_hunt(chat_id: int, context: ContextTypes.DEFAULT_TYPE, 
         step_num=1,
         total_steps=5,
         title="Rent Indian Virtual Number",
-        subtitle=f"Querying Grizzly SMS for `{RUNTIME_CONFIG['service_code']}`...",
+        subtitle=f"Querying Grizzly SMS for `{target_svc}`...",
         percent=15,
         spinner_idx=1,
     )
@@ -642,7 +650,7 @@ async def execute_single_hunt(chat_id: int, context: ContextTypes.DEFAULT_TYPE, 
         return False
 
     success, order, err_msg = grizzly_client.get_number(
-        service=RUNTIME_CONFIG["service_code"],
+        service=target_svc,
         country=RUNTIME_CONFIG["country_id"],
         max_price=RUNTIME_CONFIG["max_price"],
     )
@@ -676,7 +684,7 @@ async def execute_single_hunt(chat_id: int, context: ContextTypes.DEFAULT_TYPE, 
             cooldown_seconds=75,
         )
     )
-    db_manager.add_number(act_id, phone, service_code=RUNTIME_CONFIG["service_code"], cost=cost)
+    db_manager.add_number(act_id, phone, service_code=target_svc, cost=cost)
 
     # ------------------ STEP 2: JIO CARRIER & ACTIVE STATUS CHECK (35%) ------------------
     log_step(2, 5, "Validate Reliance Jio Carrier & Active Plan", f"Mobile=+{phone} | Cost=${cost:.2f} | ActID=#{act_id}")
@@ -918,13 +926,18 @@ async def buy_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.effective_message.reply_text("⚠️ A task is already running! Tap **[ 🛑 STOP TASK ]** to abort.")
         return
 
+    target_svc = None
+    if context.args:
+        target_svc = grizzly_client.normalize_service_code(context.args[0])
+        log_bot_info(f"Using service code '{target_svc}' for /buy command")
+
     msg = await update.effective_message.reply_text("🚀 Initializing Jio Gemini acquisition pipeline...")
     chat_cleaner.track_outgoing(chat_id, msg.message_id)
     token = task_manager.start_task(chat_id, "buy_single")
 
     async def _runner():
         try:
-            await execute_single_hunt(chat_id, context, token, msg)
+            await execute_single_hunt(chat_id, context, token, msg, service_code=target_svc)
         except Exception as e:
             logger.exception("Error during buy run")
             log_bot_err(f"Exception during buy: {e}")
@@ -950,11 +963,18 @@ async def autoscan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     limit = 10
-    if context.args and context.args[0].isdigit():
-        limit = min(50, int(context.args[0]))
+    target_svc = None
+    if context.args:
+        for arg in context.args:
+            if arg.isdigit():
+                limit = min(50, int(arg))
+            else:
+                target_svc = grizzly_client.normalize_service_code(arg)
+                log_bot_info(f"Using service code '{target_svc}' for /hunt loop")
 
-    log_tg("/autoscan", user, f"Initiating loop scan (limit={limit})")
-    msg = await update.effective_message.reply_text(f"⚡ Starting Auto-Hunt loop (Max attempts: {limit})...")
+    svc_display = target_svc or RUNTIME_CONFIG.get("service_code", DEFAULT_SERVICE_CODE)
+    log_tg("/autoscan", user, f"Initiating loop scan (limit={limit}, service={svc_display})")
+    msg = await update.effective_message.reply_text(f"⚡ Starting Auto-Hunt loop (Max attempts: {limit}, Service: `{svc_display}`)...")
     chat_cleaner.track_outgoing(chat_id, msg.message_id)
     token = task_manager.start_task(chat_id, "autoscan")
 
@@ -968,17 +988,18 @@ async def autoscan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
                 pct = int(((attempt - 1) / limit) * 100)
                 bar = render_progress_bar(pct)
-                log_bot_info(f"Auto-Hunt Attempt [{attempt}/{limit}] in progress...")
+                log_bot_info(f"Auto-Hunt Attempt [{attempt}/{limit}] in progress (Service: {svc_display})...")
                 await msg.edit_text(
                     f"⚡ **AUTO-HUNT IN PROGRESS** [Round {attempt}/{limit}]\n\n"
                     f"{bar}\n\n"
+                    f"• **Target Service**: `{svc_display}`\n"
                     f"• Searching for eligible Jio number...\n"
                     f"• Refund Watcher active (non-Jio numbers refunded automatically).",
                     reply_markup=build_stop_keyboard(),
                     parse_mode=ParseMode.MARKDOWN,
                 )
 
-                claimed = await execute_single_hunt(chat_id, context, token, msg)
+                claimed = await execute_single_hunt(chat_id, context, token, msg, service_code=target_svc)
                 if claimed:
                     claimed_count += 1
                     break
@@ -1086,7 +1107,7 @@ async def set_service_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         log_tg("/set_service", user, "Prompted for service code input")
         context.user_data["awaiting_service_code"] = True
         text = render_set_service_view(RUNTIME_CONFIG["service_code"])
-        keyboard = build_prompt_cancel_keyboard()
+        keyboard = build_service_selector_keyboard(RUNTIME_CONFIG["service_code"])
     else:
         raw_code = context.args[0].strip()
         clean_code = grizzly_client.normalize_service_code(raw_code)
@@ -1284,6 +1305,28 @@ async def generic_callback_router(update: Update, context: ContextTypes.DEFAULT_
         context.user_data["awaiting_service_code"] = True
         await query.edit_message_text(
             render_set_service_view(RUNTIME_CONFIG["service_code"]),
+            reply_markup=build_service_selector_keyboard(RUNTIME_CONFIG["service_code"]),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    elif data.startswith("svc_select_"):
+        new_svc = data.replace("svc_select_", "").strip()
+        RUNTIME_CONFIG["service_code"] = new_svc
+        save_env_variable("DEFAULT_SERVICE_CODE", new_svc)
+        context.user_data.pop("awaiting_service_code", None)
+        await query.answer(f"Activated service code: {new_svc}")
+        log_bot_info(f"Updated Service Code to '{new_svc}' via quick-select")
+        await query.edit_message_text(
+            render_set_service_view(new_svc) + f"\n\n✅ **Activated Code:** `{new_svc}`",
+            reply_markup=build_service_selector_keyboard(new_svc),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    elif data == "svc_type_custom":
+        await query.answer()
+        context.user_data["awaiting_service_code"] = True
+        await query.edit_message_text(
+            "⌨️ **TYPE CUSTOM SERVICE CODE**\n\n"
+            "Please send the exact Grizzly service code in chat now (e.g. `air`, `vi`, `go`, `wa`, `tg`, `mjo`, etc.), "
+            "or use `/set_service <code>`.",
             reply_markup=build_prompt_cancel_keyboard(),
             parse_mode=ParseMode.MARKDOWN,
         )
