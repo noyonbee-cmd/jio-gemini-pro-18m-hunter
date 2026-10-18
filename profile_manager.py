@@ -9,7 +9,7 @@ import hashlib
 import logging
 import os
 from typing import Dict, Any, List
-from telegram import Bot, BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+from telegram import Bot, BotCommand, BotCommandScopeDefault, BotCommandScopeChat, InputFile
 from telegram.error import TelegramError
 
 from db_manager import db_manager
@@ -153,7 +153,7 @@ class ProfileManager:
             if force or logo_hash != cached_logo_hash:
                 try:
                     with open(valid_logo_path, "rb") as f:
-                        await bot.set_my_profile_photo(photo=f)
+                        await bot.set_my_profile_photo(photo=InputFile(f, filename="logo.jpg"))
                     db_manager.set_profile_meta("logo_hash", logo_hash)
                     results["logo"] = "ok"
                     logger.info("Updated Bot Profile Photo (Logo)")
