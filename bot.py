@@ -12,7 +12,7 @@ import os
 import re
 import sys
 import time
-from typing import Any
+from typing import Any, Optional
 
 # Reconfigure Windows console encoding to UTF-8
 if sys.stdout.encoding and sys.stdout.encoding.lower() not in {"utf-8", "utf8"}:
