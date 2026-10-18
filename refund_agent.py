@@ -153,26 +153,34 @@ class RefundWatcherAgent:
 
             elif "EARLY_CANCEL_DENIED" in text:
                 # Carrier/provider route needs slightly more time (e.g. 90-120s)
-                log_bot_info(
-                    f"[REFUND WATCHER] Act#{act_id} returned EARLY_CANCEL_DENIED. "
-                    f"Grizzly lock still active. Retrying in 15s (Attempt {attempts + 1})..."
-                )
-                await loop.run_in_executor(
-                    None,
-                    lambda: db_manager.update_refund_attempt(act_id, error_msg="EARLY_CANCEL_DENIED", extra_cooldown=15),
-                )
+                if attempts >= 5:
+                    log_bot_warn(f"[REFUND WATCHER] Act#{act_id} exceeded max EARLY_CANCEL_DENIED retries. Marking resolved.")
+                    await loop.run_in_executor(None, lambda: db_manager.mark_refunded(act_id))
+                else:
+                    log_bot_info(
+                        f"[REFUND WATCHER] Act#{act_id} returned EARLY_CANCEL_DENIED. "
+                        f"Grizzly lock still active. Retrying in 15s (Attempt {attempts + 1})..."
+                    )
+                    await loop.run_in_executor(
+                        None,
+                        lambda: db_manager.update_refund_attempt(act_id, error_msg="EARLY_CANCEL_DENIED", extra_cooldown=15),
+                    )
 
-            elif text in ("STATUS_CANCEL", "NO_ACTIVATION", "BAD_STATUS"):
-                # Already cancelled or expired on Grizzly panel
+            elif text in ("STATUS_CANCEL", "NO_ACTIVATION", "BAD_STATUS", "BAD_ACTION", "ALREADY_CANCELLED"):
+                # Already cancelled, refunded, or expired past the 20-min window on Grizzly panel
                 await loop.run_in_executor(None, lambda: db_manager.mark_refunded(act_id))
-                log_bot_info(f"[REFUND WATCHER] Act#{act_id} is already closed on Grizzly panel ({text}). Marked refunded.")
+                log_bot_info(f"[REFUND WATCHER] Act#{act_id} is closed or expired on Grizzly panel ({text}). Marked resolved.")
 
             else:
-                log_bot_warn(f"[REFUND WATCHER] Unexpected response for Act#{act_id}: {text}")
-                await loop.run_in_executor(
-                    None,
-                    lambda: db_manager.update_refund_attempt(act_id, error_msg=text, extra_cooldown=15),
-                )
+                if attempts >= 3:
+                    log_bot_warn(f"[REFUND WATCHER] Act#{act_id} reached max retry attempts ({text}). Marking resolved to prevent loop.")
+                    await loop.run_in_executor(None, lambda: db_manager.mark_refunded(act_id))
+                else:
+                    log_bot_warn(f"[REFUND WATCHER] Unexpected response for Act#{act_id}: {text} (Attempt {attempts + 1}/3)")
+                    await loop.run_in_executor(
+                        None,
+                        lambda: db_manager.update_refund_attempt(act_id, error_msg=text, extra_cooldown=15),
+                    )
 
     async def _sweep_orphaned_activations(self) -> None:
         """
